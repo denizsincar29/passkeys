@@ -30,7 +30,7 @@ func (s *UserStore) Update(u passkey.User) error {
 
 func (s *UserStore) Get(userID []byte) (passkey.User, error) {
 	var u User
-	if err := s.db.First(&u, "id = ?", string(userID)).Error; err != nil {
+	if err := s.db.First(&u, "id = ?", userID).Error; err != nil {
 		return nil, err
 	}
 	return &u, nil
