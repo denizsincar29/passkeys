@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Passkey Demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; line-height: 1.6; }
+    input { padding: 8px; margin-bottom: 10px; width: 200px; }
+    button { padding: 8px 16px; cursor: pointer; }
+    #out { background: #f4f4f4; padding: 10px; border-radius: 4px; min-height: 50px; white-space: pre-wrap; }
+  </style>
+    <script src="https://unpkg.com/@github/webauthn-json@2.1.1/dist/browser-global/webauthn-json.browser-global.js"></script>
+</head>
+<body>
+  <h2>Passkey Demo</h2>
+
+  <input id="username" autocomplete="username webauthn" placeholder="vasiliypetrovich48" />
+  <br>
+  <button onclick="registerPasskey()">Register</button>
+  <button onclick="loginPasskey()">Login</button>
+
+  <h4>Output:</h4>
+  <pre id="out">Ready...</pre>
+
+
+<script type="module">
+import { create, get } from "https://cdn.jsdelivr.net/npm/@github/webauthn-json@2.1.1/dist/esm/webauthn-json.js";
+
+const out = (t) => {
+  const output = document.getElementById("out");
+  output.textContent = typeof t === 'object' ? JSON.stringify(t, null, 2) : t;
+};
+
+// === REGISTER ===
+window.registerPasskey = async () => {
+  const username = document.getElementById("username").value;
+  if (!username) return out("Введите имя");
+
+  try {
+    const res = await fetch(`/register/begin?username=${username}`);
+    if (!res.ok) throw new Error(await res.text());
+    const options = await res.json();
+
+    const cc = await create(options);
+
+    const finish = await fetch(`/register/finish?username=${username}`, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cc)
+    });
+
+    out(await finish.json());
+  } catch (err) {
+    out("Ошибка: " + err.message);
+  }
+};
+
+// === LOGIN BUTTON (fallback) ===
+window.loginPasskey = async () => {
+  const username = document.getElementById("username").value;
+  if (!username) return out("Введите имя");
+
+  await loginFlow(username, false);
+};
+
+// === CORE LOGIN FLOW ===
+async function loginFlow(username, conditional = false) {
+  try {
+    const res = await fetch(`/login/begin?username=${username}`);
+    if (!res.ok) throw new Error(await res.text());
+    const options = await res.json();
+
+    if (conditional) {
+      options.mediation = "conditional";
+    }
+
+    const r = await get(options);
+
+    const finish = await fetch(`/login/finish?username=${username}`, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(r)
+    });
+
+    out(await finish.json());
+  } catch (err) {
+    if (!conditional) {
+      out("Ошибка: " + err.message);
+    }
+  }
+}
+
+// === AUTO DETECT / AUTOLOGIN ===
+async function autoLogin() {
+  if (!window.PublicKeyCredential) return;
+
+  // проверка поддержки conditional UI
+  if (!PublicKeyCredential.isConditionalMediationAvailable) return;
+
+  const available = await PublicKeyCredential.isConditionalMediationAvailable();
+  if (!available) return;
+
+  try {
+    // username можно не указывать — браузер сам подставит
+    await loginFlow("", true);
+  } catch (e) {
+    console.log("No passkey or cancelled");
+  }
+}
+
+// запускаем сразу
+autoLogin();
+</script>
+</body>
+</html>
