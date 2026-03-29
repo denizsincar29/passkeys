@@ -1,0 +1,4 @@
+2026/03/29 12:06:02 running on :8000 with domain localhost and origin http://localhost:8000
+
+2026/03/29 12:06:06 [31;1m/app/store.go:41 [35;1mrecord not found
+[0m[33m[0.322ms] [34;1m[rows:0][0m SELECT * FROM `users` WHERE name = "user_1774785966" ORDER BY `users`.`id` LIMIT 1

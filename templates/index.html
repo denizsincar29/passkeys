@@ -9,19 +9,33 @@
     input { padding: 8px; margin-bottom: 10px; width: 200px; }
     button { padding: 8px 16px; cursor: pointer; }
     #out { background: #f4f4f4; padding: 10px; border-radius: 4px; min-height: 50px; white-space: pre-wrap; }
+    #notes-section { margin-top: 30px; display: none; }
+    #notes-editor { width: 100%; height: 200px; padding: 10px; margin-bottom: 10px; font-family: monospace; }
+    #notes-preview { background: #fff; border: 1px solid #ddd; padding: 10px; border-radius: 4px; min-height: 100px; }
   </style>
     <script src="https://unpkg.com/@github/webauthn-json@2.1.1/dist/browser-global/webauthn-json.browser-global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <h2>Passkey Demo</h2>
 
-  <input id="username" autocomplete="username webauthn" placeholder="vasiliypetrovich48" />
+  <input id="username" name="username" autocomplete="username webauthn" placeholder="username" />
   <br>
   <button onclick="registerPasskey()">Register</button>
   <button onclick="loginPasskey()">Login</button>
+  <button onclick="discoveryLogin()">Discovery Login</button>
 
   <h4>Output:</h4>
   <pre id="out">Ready...</pre>
+
+  <div id="notes-section">
+    <h3>My Markdown Notes</h3>
+    <textarea id="notes-editor" placeholder="Type your notes here..."></textarea>
+    <br>
+    <button onclick="saveNotes()">Save Notes</button>
+    <h4>Preview:</h4>
+    <div id="notes-preview"></div>
+  </div>
 
 
 <script type="module">
@@ -48,13 +62,17 @@ window.registerPasskey = async () => {
 
     const cc = await create(options);
 
-    const finish = await fetch(`/auth/passkey/registerFinish?username=${username}`, {
+    const finish = await fetch(`/auth/passkey/registerFinish`, {
       method: "POST",
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cc)
+      body: JSON.stringify({ ...cc, username })
     });
 
-    out(await finish.json());
+    const result = await finish.json();
+    out(result);
+    if (result === "Login Success" || result === "Registration Success") {
+        await loadNotes();
+    }
   } catch (err) {
     out("Ошибка: " + err.message);
   }
@@ -63,9 +81,14 @@ window.registerPasskey = async () => {
 // === LOGIN BUTTON (fallback) ===
 window.loginPasskey = async () => {
   const username = document.getElementById("username").value;
-  if (!username) return out("Введите имя");
+  if (!username) return out("Please enter a username");
 
   await loginFlow(username, false);
+};
+
+// === DISCOVERY LOGIN BUTTON ===
+window.discoveryLogin = async () => {
+  await loginFlow("", false);
 };
 
 // === CORE LOGIN FLOW ===
@@ -85,16 +108,24 @@ async function loginFlow(username, conditional = false) {
 
     const r = await get(options);
 
-    const finish = await fetch(`/auth/passkey/loginFinish?username=${username}`, {
+    const finish = await fetch(`/auth/passkey/loginFinish`, {
       method: "POST",
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r)
     });
 
-    out(await finish.json());
+    const result = await finish.json();
+    out(result);
+    if (result === "Login Success") {
+        await loadNotes();
+    }
   } catch (err) {
+    if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+        console.log("WebAuthn prompt ignored or blocked:", err.message);
+        return;
+    }
     if (!conditional) {
-      out("Ошибка: " + err.message);
+      out("Error: " + err.message);
     }
   }
 }
@@ -103,22 +134,74 @@ async function loginFlow(username, conditional = false) {
 async function autoLogin() {
   if (!window.PublicKeyCredential) return;
 
-  // проверка поддержки conditional UI
-  if (!PublicKeyCredential.isConditionalMediationAvailable) return;
-
-  const available = await PublicKeyCredential.isConditionalMediationAvailable();
-  if (!available) return;
-
-  try {
-    // username можно не указывать — браузер сам подставит
-    await loginFlow("", true);
-  } catch (e) {
-    console.log("No passkey or cancelled");
+  // 1. Try Conditional UI (autofill)
+  if (PublicKeyCredential.isConditionalMediationAvailable) {
+    const available = await PublicKeyCredential.isConditionalMediationAvailable();
+    if (available) {
+      loginFlow("", true); // Don't await, it runs in background waiting for user interaction
+    }
   }
+
+  // 2. Immediate prompt for passkey as requested
+  // We'll wait a tiny bit to not clash too much with initial load, or just fire it
+  setTimeout(async () => {
+      try {
+          // Only prompt if the user hasn't started typing or interacting much yet?
+          // Actually, the request was "immediately ask if i wanna use my passkey"
+          await loginFlow("", false);
+      } catch (e) {
+          console.log("Immediate prompt dismissed or failed", e);
+      }
+  }, 1000);
 }
 
-// запускаем сразу
-autoLogin();
+// === NOTES HANDLERS ===
+window.saveNotes = async () => {
+    const notes = document.getElementById("notes-editor").value;
+    try {
+        const res = await fetch("/notes/save", {
+            method: "POST",
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes })
+        });
+        const result = await res.json();
+        out(result);
+        updatePreview();
+    } catch (err) {
+        out("Error: " + err.message);
+    }
+};
+
+async function loadNotes() {
+    try {
+        const res = await fetch("/notes/get");
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("notes-editor").value = data.notes || "";
+        document.getElementById("notes-section").style.display = "block";
+        updatePreview();
+    } catch (err) {
+        console.error("Could not load notes", err);
+    }
+}
+
+function updatePreview() {
+    const notes = document.getElementById("notes-editor").value;
+    document.getElementById("notes-preview").innerHTML = marked.parse(notes || "");
+}
+
+document.getElementById("notes-editor").addEventListener("input", updatePreview);
+
+// Start autodiscovery on load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        autoLogin();
+        loadNotes(); // Try to load notes if already logged in
+    });
+} else {
+    autoLogin();
+    loadNotes();
+}
 </script>
 </body>
 </html>

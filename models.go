@@ -13,6 +13,7 @@ type User struct {
 	ID          uint   `gorm:"primaryKey"`
 	Name        string `gorm:"uniqueIndex"`
 	Credentials []byte `gorm:"type:blob"`
+	Notes       string `gorm:"type:text"`
 }
 
 func (u *User) WebAuthnID() []byte {
