@@ -38,13 +38,17 @@ window.registerPasskey = async () => {
   if (!username) return out("Введите имя");
 
   try {
-    const res = await fetch(`/register/begin?username=${username}`);
+    const res = await fetch(`/auth/passkey/registerBegin`, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
     if (!res.ok) throw new Error(await res.text());
     const options = await res.json();
 
     const cc = await create(options);
 
-    const finish = await fetch(`/register/finish?username=${username}`, {
+    const finish = await fetch(`/auth/passkey/registerFinish?username=${username}`, {
       method: "POST",
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cc)
@@ -67,7 +71,11 @@ window.loginPasskey = async () => {
 // === CORE LOGIN FLOW ===
 async function loginFlow(username, conditional = false) {
   try {
-    const res = await fetch(`/login/begin?username=${username}`);
+    const res = await fetch(`/auth/passkey/loginBegin`, {
+      method: "POST",
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username })
+    });
     if (!res.ok) throw new Error(await res.text());
     const options = await res.json();
 
@@ -77,7 +85,7 @@ async function loginFlow(username, conditional = false) {
 
     const r = await get(options);
 
-    const finish = await fetch(`/login/finish?username=${username}`, {
+    const finish = await fetch(`/auth/passkey/loginFinish?username=${username}`, {
       method: "POST",
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(r)

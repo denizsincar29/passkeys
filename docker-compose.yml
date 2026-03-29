@@ -1,0 +1,11 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_DOMAIN=localhost
+      - PORT=8000
+    volumes:
+      - ./db:/app/db
+    restart: unless-stopped

@@ -1,1 +1,5 @@
 passkeys.exe
+demo
+db/
+*.db
+.env
